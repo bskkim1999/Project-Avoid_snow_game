@@ -33,8 +33,8 @@ int status[20]={0};
 int count_character_moving = 0;
 int case_even=0;
 int case_odd=0;
-
-
+int dangerous_flag=0;
+int gameover_flag=0;
 unsigned char lcd_screen_data_col_0_row_0;
 unsigned char lcd_screen_data_col_0_row_1;
 
@@ -87,9 +87,12 @@ ISR(INT4_vect){
 		case_odd++;
 		
 	}
-	//printf("count_character_moving : %d \r\n", count_character_moving);
 	
-	//show_lcd_screen_by_lcd_screen_data();  //배열의 값을 lcd에 표시해주는 함수
+	//new code
+	if(dangerous_flag==1){
+		gameover_flag++; //main 함수의 무한루프 탈출. gameover.
+	}
+	
 }
 
 
@@ -242,7 +245,7 @@ void again_write_address(void){
 	//데이터를 연속적으로 보내기 위해서는 주소를 다시 써야 함.////////
 	TWI_Start();
 	TWI_Write(0x4E);  //slave address, write mode (0100 1110)
-	_delay_us(300);
+	//_delay_us(100);
 	
 }
 
@@ -459,7 +462,7 @@ int main() {
 	int count_character_moving = 0;
 	unsigned long tp_move_screen,tp_snow, tp_speaker_time;
 	unsigned long tc_move_screen,tc_snow, tc_speaker_time;
-	int read=0;
+	unsigned long read=0;
 	int value = 0;
 	int prior_value = 0;
 	unsigned char (*ptr2) [16] = lcd_screen_data;  //2차원 배열의 포인터이다.
@@ -468,6 +471,7 @@ int main() {
 	int score = 0;
 	unsigned char arr_score[4];
 	int speaker_flag=0;
+	int up=0;
 	
 	stdout = &OUTPUT;
 	stdin = &INPUT;
@@ -507,7 +511,7 @@ int main() {
 	
 	//Made by boseok 문구를 처음에 lcd screen에 보여준다.
 	lcd_message_start();
-	_delay_ms(2000);  //2초동안 대기.
+	_delay_ms(1000);  //1초동안 대기.
 	LCD_clear();
 	
 	
@@ -525,29 +529,34 @@ int main() {
 	tp_speaker_time = millis();
 	
 	while(1){
+		//눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우 게임오버. (수시로 검사함.)
+		if(gameover_flag==1){
+			printf("gameover_!! \r\n");
+			break; //무한루프 탈출. gameover.
+		}
 		
 		tc_snow = millis();
 		tc_move_screen = millis();
 		tc_speaker_time = millis();
+		
 		
 		//task 4 : piezo speaker : 0.1초동안 터치음을 발생함. (터치음이 길게 발생하지 않도록 수시로 검사함.)
 		if( (tc_speaker_time - tp_speaker_time >= 100) && (speaker_flag==1) ){
 			speaker_flag = 0;
 			speaker_tone_stop();
 		}
-		
-		//task 1 : ADC, check every 0.2 seconds, to produce snow
-		if(tc_snow - tp_snow > 200){
-			tp_snow = tc_snow;
+		read = millis(); //seed값
+		//task 1 : check every 0.2 seconds, to produce snow
+		if(tc_snow - tp_snow > 500 - up){
+			if(up <= 400) up = up + 2;
 			
-			read = TCNT0; 
+			tp_snow = tc_snow;
 			
 			srand(read);  //seed값을 매번 다르게 하기 위하여 타이머/카운터0번의 TCNT0를 사용함.
 			value = rand() % 4;  //0 or 1 or 2 or 3
-			printf("%d \r\n", value);
-			//printf("%d \r\n", value);
 			//0.2초마다 실행.
 			//0일경우에는 눈(*)을 1행 15열에 생성.
+			printf("value : %d \r\n", value);
 			if( (value == 0) && (prior_value != 1)  ){
 					
 				write_lcd_screen_data(1,15,'*');
@@ -622,10 +631,24 @@ int main() {
 			speaker_tone_stop();
 		}
 		
-		//task 3 : moving snow.
-		if(tc_move_screen - tp_move_screen  > 100){
+		//눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우 게임오버. (수시로 검사함.)
+		if(gameover_flag==1){
+			printf("gameover_!! \r\n");
+			break; //무한루프 탈출. gameover.
+		}
+		
+		//task 3 : moving snow.  
+		if(tc_move_screen - tp_move_screen  > 500 - up){
+			//눈(*)이 움직이는 속도 증가
+			if(up <= 400) up = up + 2;
 			
-			tp_move_screen = tc_move_screen;
+			//눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우 게임오버. (수시로 검사함.)
+			if(gameover_flag==1){
+				printf("gameover_!! \r\n");
+				break; //무한루프 탈출. gameover.
+			}
+		
+			tp_move_screen = tc_move_screen;   //시간 관련 변수
 			
 			//lcd_screen_data 의 0열의 값을 저장한다. (캐릭터의 위치와 눈(*)의 유무를 저장하기 위해서)
 			lcd_screen_data_col_0_row_0 = lcd_screen_data[0][0];
@@ -644,8 +667,10 @@ int main() {
 			
 			move_right_to_left_lcd_screen_data();  //배열의 값을 왼쪽으로 한 칸 옮김. (1열 ~ 15열에만 해당함.)
 			
+			dangerous_flag = 0;  //for case 2
+			
 			//0열 검사 (만약 0열에 한 곳이라도 눈이 있을 경우에는 move_right_to_left_lcd_screen_data() 호출 이후에는 눈을 제거함.)
-			if(lcd_screen_data_col_0_row_0 == '*'){
+			if(lcd_screen_data_col_0_row_0 == '*' ){
 				lcd_screen_data[0][0] = ' ';
 			}
 			
@@ -653,7 +678,7 @@ int main() {
 				lcd_screen_data[1][0] = ' ';
 			}
 			
-			//눈(*)을 캐릭터가 정면으로 맞았을 경우.
+			//case 1 : 눈(*)을 캐릭터가 정면으로 맞았을 경우.
 			//만약, 0행 1열에 눈(*)이 존재하고, 0행 0열에 캐릭터가 존재하지 않으면?(캐릭터가 1행 0열에 위치할 경우, 즉,  눈을 피할경우) (참고로 캐릭터는 숫자0이다.)
 			if( (col_1_row_0_flag == 1) && (lcd_screen_data_col_0_row_0 != 0)){
 				lcd_screen_data[0][0] = '*';  //0행 0열에 눈(*)을 lcd 배열 데이터에 추가한다.
@@ -665,8 +690,8 @@ int main() {
 			else{
 				//만약, 0행 1열에 눈(*)이 존재하고, 0행 0열에 캐릭터가 존재하여 한 칸 이동 후 겹쳐지면? 게임 오버.
 				if( (col_1_row_0_flag == 1) && (lcd_screen_data_col_0_row_0 == 0)){
+					printf("test1 \r\n");
 					break; //무한루프 탈출!
-					
 				}
 				
 			}
@@ -680,11 +705,22 @@ int main() {
 			else{
 				//만약, 1행 1열에 눈(*)이 존재하고, 1행 0열에 캐릭터가 존재하여 한 칸 이동 후 겹쳐지면? 게임 오버.
 				if( (col_1_row_1_flag == 1) && (lcd_screen_data_col_0_row_1 == 0)){
+					printf("test2 \r\n");
 					break; //무한루프 탈출!
-					
 				}
 				
 			}
+			//case 2 : 눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우.
+			//0행 0열에 눈(*)이 존재하고, 1행 0열에 캐릭터가 존재할 때,  
+			if( (lcd_screen_data[0][0] == '*') && (lcd_screen_data[1][0] == 0) ){
+				dangerous_flag++;  //dangerous_flag가 1로 바뀜.
+			}
+			
+			//1행 0열에 눈(*)이 존재하고, 0행 0열에 캐릭터가 존재할 때,
+			if( (lcd_screen_data[0][0] == 0) && (lcd_screen_data[1][0] == '*') ){
+				dangerous_flag++;  //dangerous_flag가 1로 바뀜.
+			}
+			
 			//task 4 : piezo speaker : 0.1초동안 터치음을 발생함. (터치음이 길게 발생하지 않도록 수시로 검사함.)
 			if( (tc_speaker_time - tp_speaker_time >= 100) && (speaker_flag==1) ){
 				speaker_flag = 0;
@@ -695,6 +731,7 @@ int main() {
 			col_1_row_0_flag=0;
 			col_1_row_1_flag=0;
 			
+			
 			show_lcd_screen_by_lcd_screen_data();  //배열의 값을 lcd에 표시해주는 함수
 			
 			//task 4 : piezo speaker : 0.1초동안 터치음을 발생함. (터치음이 길게 발생하지 않도록 수시로 검사함.)
@@ -704,6 +741,11 @@ int main() {
 			}
 		} //task 3
 		
+		//눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우 게임오버. (수시로 검사함.)
+		if(gameover_flag==1){
+			printf("gameover!! \r\n");
+			break; //무한루프 탈출. gameover.
+		}
 		
 	} //while(1)
 	
