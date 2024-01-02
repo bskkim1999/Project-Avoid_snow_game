@@ -471,7 +471,7 @@ int main() {
 	int score = 0;
 	unsigned char arr_score[4];
 	int speaker_flag=0;
-	int up=0;
+	float up=0;
 	
 	stdout = &OUTPUT;
 	stdin = &INPUT;
@@ -548,7 +548,7 @@ int main() {
 		read = millis(); //seed값
 		//task 1 : check every 0.2 seconds, to produce snow
 		if(tc_snow - tp_snow > 500 - up){
-			if(up <= 400) up = up + 1;
+			if(up <= 400) up = up + 1.1;
 			
 			tp_snow = tc_snow;
 			
@@ -640,7 +640,7 @@ int main() {
 		//task 3 : moving snow.  
 		if(tc_move_screen - tp_move_screen  > 500 - up){
 			//눈(*)이 움직이는 속도 증가
-			if(up <= 400) up = up + 1;
+			if(up <= 400) up = up + 1.1;
 			
 			//눈(*)을 캐릭터가 위 또는 아래로 맞았을 경우 게임오버. (수시로 검사함.)
 			if(gameover_flag==1){
